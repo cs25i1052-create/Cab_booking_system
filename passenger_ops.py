@@ -23,3 +23,29 @@ def get_passenger_by_phone(phone):
 
             return cur.fetchone()
 
+
+
+def get_available_cabs(category_type=None):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            if category_type:
+                
+                cur.execute("""
+                    SELECT c.cab_id, c.model, c.plate_no, cat.type_name, 
+                           cat.base_fare, cat.rate_per_km, cat.seating_capacity, d.full_name
+                    FROM cab c
+                    JOIN driver d ON c.driver_id = d.driver_id
+                    JOIN cab_category cat ON c.category_id = cat.category_id
+                    WHERE d.status = 'AVAILABLE' AND ILIKE(cat.type_name, %s);
+                """, (category_type,))
+            else:
+                cur.execute("""
+                    SELECT c.cab_id, c.model, c.plate_no, cat.type_name, 
+                           cat.base_fare, cat.rate_per_km, cat.seating_capacity, d.full_name
+                    FROM cab c
+                    JOIN driver d ON c.driver_id = d.driver_id
+                    JOIN cab_category cat ON c.category_id = cat.category_id
+                    WHERE d.status = 'AVAILABLE';
+                """)
+            
+            return cur.fetchall()
