@@ -2,7 +2,6 @@ import psycopg
 from db import get_connection
 
 def register_passenger(full_name, phone, email):
-    # --- IMPROVEMENT 5: Remove extra spaces and check 10-digit phone ---
     full_name = full_name.strip()
     phone = phone.strip()
     email = email.strip()
@@ -34,7 +33,7 @@ def register_passenger(full_name, phone, email):
 
 
 def get_passenger_by_phone(phone):
-    phone = phone.strip()  # <--- Removes the extra spaces before searching
+    phone = phone.strip()  
     
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -158,3 +157,137 @@ def delete_cancelled_ride(booking_id, passenger_id):
           (booking_id, passenger_id),
       )
       return cur.fetchone()
+
+def update_passenger_details(passenger_id, full_name="", phone="", email=""):
+    clean_name = full_name.strip() if full_name else ""
+    clean_phone = phone.strip() if phone else ""
+    clean_email = email.strip() if email else ""
+
+   
+    if not clean_name and not clean_phone and not clean_email:
+        print("Error: Provide at least one new detail (name, phone, or email) to update.")
+        return None
+
+    if clean_phone and (not clean_phone.isdigit() or len(clean_phone) != 10):
+        print("Error: New phone number must be exactly 10 digits.")
+        return None
+
+ 
+    if clean_email and ("@" not in clean_email or "." not in clean_email):
+        print("Error: Invalid email format.")
+        return None
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+        
+                cur.execute("""
+                    UPDATE passenger
+                    SET full_name = COALESCE(NULLIF(%s, ''), full_name),
+                        phone     = COALESCE(NULLIF(%s, ''), phone),
+                        email     = COALESCE(NULLIF(%s, ''), email)
+                    WHERE passenger_id = %s
+                    RETURNING passenger_id, full_name, phone, email;
+                """, (clean_name, clean_phone, clean_email, passenger_id))
+
+                updated_user = cur.fetchone()
+                if not updated_user:
+                    print(f"Error: Passenger ID {passenger_id} not found.")
+                    return None
+
+                return updated_user
+
+    except psycopg.errors.UniqueViolation:
+        print("Error: That phone number or email is already registered to another passenger!")
+        return None
+
+def get_cab_categories():
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT category_id, type_name FROM cab_category;")
+            return cur.fetchall()
+
+def signup_driver(full_name, phone, license_no, plate_no, model, category_id):
+
+    if not phone.isdigit() or len(phone) != 10:
+        print("Error: Phone number must be exactly 10 digits.")
+        return None
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+    
+                cur.execute("""
+                    INSERT INTO driver (full_name, phone, license_no, status) 
+                    VALUES (%s, %s, %s, 'AVAILABLE') RETURNING driver_id;
+                """, (full_name.strip(), phone.strip(), license_no.strip()))
+                driver_id = cur.fetchone()[0]
+
+                # 2. Insert their Cab
+                cur.execute("""
+                    INSERT INTO cab (plate_no, model, category_id, driver_id) 
+                    VALUES (%s, %s, %s, %s);
+                """, (plate_no.strip(), model.strip(), category_id, driver_id))
+                
+                conn.commit()
+                return driver_id
+
+    except psycopg.errors.UniqueViolation:
+        print("Error: A driver with this phone number, license number, or plate number already exists.")
+        return None
+
+def login_driver(phone):
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT d.driver_id, d.full_name, d.license_no, d.status, 
+                       c.plate_no, c.model, cat.type_name
+                FROM driver d
+                LEFT JOIN cab c ON d.driver_id = c.driver_id
+                LEFT JOIN cab_category cat ON c.category_id = cat.category_id
+                WHERE d.phone = %s;
+            """, (phone.strip(),))
+            return cur.fetchone()
+
+def update_driver_profile(driver_id, full_name="", phone="", plate_no="", model="", category_id=None):
+    clean_name = full_name.strip() if full_name else ""
+    clean_phone = phone.strip() if phone else ""
+    clean_plate = plate_no.strip() if plate_no else ""
+    clean_model = model.strip() if model else ""
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                
+                if clean_name or clean_phone:
+                    cur.execute("""
+                        UPDATE driver
+                        SET full_name = COALESCE(NULLIF(%s, ''), full_name),
+                            phone     = COALESCE(NULLIF(%s, ''), phone)
+                        WHERE driver_id = %s;
+                    """, (clean_name, clean_phone, driver_id))
+
+                
+                if clean_plate or clean_model or category_id:
+                    cur.execute("""
+                        UPDATE cab
+                        SET plate_no    = COALESCE(NULLIF(%s, ''), plate_no),
+                            model       = COALESCE(NULLIF(%s, ''), model),
+                            category_id = COALESCE(%s, category_id)
+                        WHERE driver_id = %s;
+                    """, (clean_plate, clean_model, category_id, driver_id))
+
+                conn.commit()
+                return True
+                
+    except psycopg.errors.UniqueViolation:
+        print("Error: The new phone number or number plate is already used by another driver.")
+        return False
+
+def update_driver_status(driver_id, new_status):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE driver SET status = %s WHERE driver_id = %s;", (new_status, driver_id))
+            conn.commit()
