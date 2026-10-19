@@ -176,9 +176,18 @@ def get_driver_rides(driver_id):
 # ==========================================
 
 def reassign_ride_to_next_driver(booking_id, declining_driver_id):
-    """Logs a driver decline/cancel and automatically reassigns the ride to the next available driver."""
+    """Logs a driver decline/cancel and randomly reassigns the ride to another available driver in the same category."""
     with get_connection() as conn:
         with conn.cursor() as cur:
+            # Ensure ride_declines table exists
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ride_declines (
+                    booking_id INT,
+                    driver_id INT,
+                    PRIMARY KEY (booking_id, driver_id)
+                );
+            """)
+
             # 1. Log that this driver declined/cancelled this booking
             cur.execute("""
                 INSERT INTO ride_declines (booking_id, driver_id)
@@ -198,7 +207,7 @@ def reassign_ride_to_next_driver(booking_id, declining_driver_id):
                 return "ERROR"
             category_id = row[0]
 
-            # 3. Find the NEXT available driver in that category who hasn't declined yet
+            # 3. Randomly pick the NEXT available driver in that category who hasn't declined yet
             cur.execute("""
                 SELECT c.cab_id, d.driver_id
                 FROM cab c
@@ -209,14 +218,14 @@ def reassign_ride_to_next_driver(booking_id, declining_driver_id):
                   AND d.driver_id NOT IN (
                       SELECT driver_id FROM ride_declines WHERE booking_id = %s
                   )
-                ORDER BY d.driver_id ASC
+                ORDER BY RANDOM()
                 LIMIT 1;
             """, (category_id, declining_driver_id, booking_id))
 
             next_cab = cur.fetchone()
 
             if next_cab:
-                # 4a. Reassign ride to the next driver
+                # 4a. Reassign ride to the next random driver
                 new_cab_id = next_cab[0]
                 cur.execute("""
                     UPDATE ride_booking
@@ -224,7 +233,6 @@ def reassign_ride_to_next_driver(booking_id, declining_driver_id):
                     WHERE booking_id = %s;
                 """, (new_cab_id, booking_id))
                 
-                # Free up the declining driver
                 cur.execute("UPDATE driver SET status = 'AVAILABLE' WHERE driver_id = %s;", (declining_driver_id,))
                 conn.commit()
                 return "REASSIGNED"
