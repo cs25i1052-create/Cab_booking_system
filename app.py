@@ -28,6 +28,7 @@ from driver_ops import (
 )
 
 st.set_page_config(page_title="Cab Booking", layout="wide", initial_sidebar_state="collapsed")
+
 # ==========================================
 # REAL LOCATIONS & GPS COORDINATES
 # ==========================================
@@ -86,7 +87,6 @@ def calculate_road_distance_km(loc1, loc2):
     straight_km = 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     road_km = straight_km * 1.21
     return round(max(road_km, 1.5), 1)
-
 
 # ==========================================
 # GLOBAL CSS & SINGLE-LINE HTML HELPERS (PREVENTS RAW CODE BLOCKS)
@@ -192,9 +192,9 @@ if "passenger" not in st.session_state:
 if "driver" not in st.session_state:
     st.session_state.driver = None
 if "passenger_view" not in st.session_state:
-    st.session_state.passenger_view = "ride"  # 'ride', 'activity', 'account'
+    st.session_state.passenger_view = "ride"
 if "driver_view" not in st.session_state:
-    st.session_state.driver_view = "dashboard"  # 'dashboard', 'history', 'profile'
+    st.session_state.driver_view = "dashboard"
 if "selected_ride_details" not in st.session_state:
     st.session_state.selected_ride_details = None
 if "selected_driver_ride_details" not in st.session_state:
@@ -396,6 +396,11 @@ def render_passenger_portal():
         unsafe_allow_html=True,
     )
 
+    # --- SYSTEM ALERT FOR UNAVAILABLE DRIVERS ---
+    unfulfilled_rides = [r for r in rides if r[5] == "NO_DRIVERS"]
+    for ur in unfulfilled_rides:
+        st.error(f"🚨 **Ride Alert:** Booking #{ur[0]} from {ur[1]} to {ur[2]} was cancelled because no drivers are available right now. Please delete the record and try again later.")
+
     if st.session_state.passenger_view == "ride":
         left_col, right_col = st.columns([1.05, 1.35], gap="large")
 
@@ -493,7 +498,7 @@ def render_passenger_portal():
                                 cancel_ride(sel[0], p["id"])
                                 st.session_state.selected_ride_details = None
                                 st.rerun()
-                        elif sel[5] == "CANCELLED":
+                        elif sel[5] in ("CANCELLED", "NO_DRIVERS"):
                             if st.button("Delete Record", key=f"det_del_{sel[0]}", use_container_width=True):
                                 delete_cancelled_ride(sel[0], p["id"])
                                 st.session_state.selected_ride_details = None
@@ -543,7 +548,7 @@ def render_passenger_portal():
                             if st.button("Cancel Ride", key=f"act_can_{r[0]}", use_container_width=True):
                                 cancel_ride(r[0], p["id"])
                                 st.rerun()
-                        elif r[5] == "CANCELLED":
+                        elif r[5] in ("CANCELLED", "NO_DRIVERS"):
                             if st.button("Delete Cancelled Ride", key=f"act_del_{r[0]}", use_container_width=True):
                                 delete_cancelled_ride(r[0], p["id"])
                                 st.rerun()
@@ -571,7 +576,7 @@ def render_passenger_portal():
 
 
 # ==========================================
-# 4. REDESIGNED DRIVER PORTAL (MATCHES PASSENGER PORTAL)
+# 4. REDESIGNED DRIVER PORTAL
 # ==========================================
 def render_driver_portal():
     d = st.session_state.driver
@@ -588,9 +593,8 @@ def render_driver_portal():
         d["category"] = fresh_drv[6]
 
     active_rides = [r for r in all_driver_rides if r[7] in ("REQUESTED", "ACCEPTED", "ONGOING")]
-    past_rides = [r for r in all_driver_rides if r[7] in ("COMPLETED", "CANCELLED")]
+    past_rides = [r for r in all_driver_rides if r[7] in ("COMPLETED", "CANCELLED", "NO_DRIVERS")]
 
-    # Top Header Bar with Driver Popover Menu (Matches Passenger Header)
     h_col1, _, h_col3 = st.columns([3.5, 4.0, 1.5])
     with h_col1:
         render_top_nav_logo("Cab Booking • Driver")
@@ -616,7 +620,6 @@ def render_driver_portal():
                 st.session_state.selected_driver_ride_details = None
                 st.rerun()
 
-    # Sleek Black Summary Bar
     st.markdown(
         f'<div class="top-black-bar">'
         f'<span style="font-size:1.08rem;">Welcome back, {d["name"]}</span>'
@@ -627,11 +630,9 @@ def render_driver_portal():
         unsafe_allow_html=True,
     )
 
-    # ---- VIEW A: DRIVER HOME DASHBOARD (2-COLUMN PREMIUM LAYOUT) ----
     if st.session_state.driver_view == "dashboard":
         left_col, right_col = st.columns([1.05, 1.35], gap="large")
 
-        # Left Column: Shift Control + Active Ride Requests
         with left_col:
             st.markdown('<div class="section-heading">Shift & Dispatch</div>', unsafe_allow_html=True)
 
@@ -657,7 +658,6 @@ def render_driver_portal():
                     st.info("No active ride requests right now. Stay AVAILABLE to receive bookings.")
             else:
                 for r in active_rides:
-                    # (booking_id, passenger_name, passenger_phone, pickup, drop, distance, fare, status, time, rating, comment)
                     with st.container(border=True):
                         st.markdown(f"#### **Booking #{r[0]} — {r[1]}** (`{r[2]}`)")
                         st.markdown(f"**Pickup:** {r[3]}  \n**Drop-off:** {r[4]}")
@@ -687,11 +687,9 @@ def render_driver_portal():
                                 driver_update_ride_status(r[0], d["id"], "COMPLETED")
                                 st.rerun()
 
-        # Right Column: Driver Account Summary + Past Rides & Ratings (Matches Passenger Home Screen)
         with right_col:
             st.markdown('<div class="section-heading">Your profile and activity</div>', unsafe_allow_html=True)
 
-            # Quick Profile & Vehicle Card with "Manage profile" button
             with st.container(border=True):
                 dc1, dc2 = st.columns([3.1, 1.3])
                 with dc1:
@@ -702,7 +700,6 @@ def render_driver_portal():
                         st.session_state.driver_view = "profile"
                         st.rerun()
 
-            # Selected Past Ride Details Box
             if st.session_state.selected_driver_ride_details:
                 sel = st.session_state.selected_driver_ride_details
                 with st.container(border=True):
@@ -737,7 +734,6 @@ def render_driver_portal():
                                 st.session_state.selected_driver_ride_details = r
                                 st.rerun()
 
-    # ---- VIEW B: SEPARATE DRIVER PROFILE PAGE (MATCHES PASSENGER MANAGE ACCOUNT) ----
     elif st.session_state.driver_view == "profile":
         st.markdown('<div class="section-heading">Manage Driver & Vehicle Profile</div>', unsafe_allow_html=True)
         if st.button("← Back to Driver Dashboard"):
@@ -777,7 +773,6 @@ def render_driver_portal():
                     else:
                         st.error("Phone number or number plate is already registered to another driver.")
 
-    # ---- VIEW C: FULL DRIVER PAST RIDES & RATINGS PAGE ----
     elif st.session_state.driver_view == "history":
         st.markdown('<div class="section-heading">Past Rides & Passenger Ratings</div>', unsafe_allow_html=True)
         if st.button("← Back to Driver Dashboard"):

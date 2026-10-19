@@ -229,10 +229,10 @@ def reassign_ride_to_next_driver(booking_id, declining_driver_id):
                 conn.commit()
                 return "REASSIGNED"
             else:
-                # 4b. No drivers left! Mark ride as cancelled
+                # 4b. No drivers left! Mark ride as NO_DRIVERS
                 cur.execute("""
                     UPDATE ride_booking
-                    SET ride_status = 'NO DRIVERS'
+                    SET ride_status = 'NO_DRIVERS'
                     WHERE booking_id = %s;
                 """, (booking_id,))
                 cur.execute("UPDATE driver SET status = 'AVAILABLE' WHERE driver_id = %s;", (declining_driver_id,))
