@@ -1,0 +1,14 @@
+# Cab Booking - Streamlit theme
+# Place this file at  .streamlit/config.toml  (the .streamlit folder sits next to app.py).
+#
+# It forces the light theme so the app looks the same on every device (including
+# phones / laptops set to dark mode) and colours Streamlit's built-in widgets
+# (dropdown menus, toasts, focus states) to match the black-and-white design.
+
+[theme]
+base = "light"
+primaryColor = "#000000"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F3F3F3"
+textColor = "#000000"
+font = "sans serif"
